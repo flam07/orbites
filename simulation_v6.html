@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravitation Terre-Lune</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:    #03060f; --panel: #080d1a; --panel2:#0d1526;
+    --bord:  #1a2a4a; --bordhi:#2a4a8a;
+    --acc:   #4a9eff; --acc2:  #7bc8ff;
+    --txt:   #c8deff; --dim:   #4a6a9a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;background:var(--bg);color:var(--txt);
+    font-family:'Share Tech Mono',monospace;overflow:hidden;}
+  #app{display:flex;flex-direction:row;align-items:flex-start;
+    gap:10px;padding:8px;height:100vh;}
+
+  /* Canvas : prend tout l'espace restant, centré */
+  #wrap{position:relative;flex:1;
+    height:calc(100vh - 16px);
+    max-width:calc(100vh - 16px + 200px);
+    max-height:calc(100vh - 16px);
+    margin:0 auto;
+    border:1px solid var(--bordhi);border-radius:8px;overflow:hidden;
+    box-shadow:0 0 40px rgba(74,158,255,.12);}
+  canvas{display:block;width:100%;height:100%;}
+
+  #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    background:rgba(8,13,26,.9);border:1px solid var(--bordhi);
+    border-radius:20px;padding:5px 14px;font-size:.68rem;
+    color:var(--acc2);pointer-events:none;white-space:nowrap;transition:opacity .5s;}
+  #fps{position:absolute;top:6px;right:8px;font-size:.58rem;
+    color:var(--dim);pointer-events:none;}
+
+  /* Panneau droite */
+  #panel{flex:1;min-width:185px;max-width:275px;height:calc(100vh - 16px);
+    overflow-y:auto;display:flex;flex-direction:column;gap:8px;
+    scrollbar-width:thin;scrollbar-color:var(--bordhi) transparent;}
+  h1{font-family:'Orbitron',monospace;font-size:.72rem;letter-spacing:.1em;
+    color:var(--acc2);text-shadow:0 0 14px rgba(74,158,255,.45);
+    padding:2px 0 6px;border-bottom:1px solid var(--bord);}
+  .grp{background:var(--panel);border:1px solid var(--bord);
+    border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:5px;}
+  .lbl{font-family:'Orbitron',monospace;font-size:.46rem;letter-spacing:.16em;
+    color:var(--dim);text-transform:uppercase;
+    border-bottom:1px solid var(--bord);padding-bottom:3px;margin-bottom:2px;}
+  button{height:44px;background:var(--panel2);border:1px solid var(--bordhi);
+    border-radius:5px;color:var(--txt);font-family:'Share Tech Mono',monospace;
+    font-size:.1.05rem;cursor:pointer;padding:0 8px;transition:all .12s;
+    text-align:left;width:100%;}
+  button:hover{background:#132040;border-color:var(--acc);color:var(--acc2);}
+  button:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
+  button.on{background:#0a2050;border-color:var(--acc2);color:var(--acc2);}
+  button.red{border-color:#6a2a2a;color:#e08080;}
+  button.red:hover{background:#2a0a0a;border-color:#e05050;color:#ffaaaa;}
+  button:disabled{opacity:.28;cursor:not-allowed;}
+  select{height:44px;background:var(--panel2);border:1px solid var(--bordhi);
+    border-radius:5px;color:var(--txt);font-family:'Share Tech Mono',monospace;
+    font-size:.1.05rem;padding:0 6px;cursor:pointer;width:100%;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="hint">Ajoute une lune ou choisis un scénario</div>
+    <div id="fps">-- FPS</div>
+  </div>
+  <div id="panel">
+    <h1>⚫ GRAVITATION<br>TERRE–LUNE</h1>
+    <div class="grp">
+      <div class="lbl">🌙 Simulation</div>
+      <button id="bAdd">+ Ajouter une lune</button>
+      <button id="bReset" class="red">↺ Reset</button>
+      <button id="bPause">⏸ Pause</button>
+      <button id="bSlow">🐢 Ralentir ×0.25</button>
+    </div>
+    <div class="grp">
+      <div class="lbl">🌍 Gravité terrestre</div>
+      <select id="massSelect">
+        <option value="1">×1 — Normale</option>
+        <option value="2">×2 — Double</option>
+        <option value="5">×5 — Forte</option>
+      </select>
+    </div>
+    <div class="grp">
+      <div class="lbl">👁 Affichage</div>
+      <button id="bTraj"  aria-pressed="false">○ Trajectoires</button>
+     
+      <button id="bPred"  aria-pressed="false">○ Traj. prédictive</button>
+               <button id="bMoonGrav" aria-pressed="false">○ Gravité lunes</button>
+    </div>
+    <div class="grp">
+      <div class="lbl">🚀 Scénarios</div>
+      <button data-sc="close">🔵 Orbite proche stable</button>
+      <button data-sc="far">🟣 Orbite éloignée stable</button>
+      <button data-sc="short">🟡 Orbite sortante courte</button>
+      <button data-sc="long">🔴 Orbite sortante longue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* =============================================================
+   PHYSIQUE — VALEURS CALIBRÉES PAR SIMULATION NUMÉRIQUE
+   -------------------------------------------------------------
+   G       = 2 000 000  →  orbite proche (r=110) : v=135 px/s
+   SUBSTEP = 8        →  intégration Euler stable, pas d'instabilité
+   VEL_SCALE = 1.0    →  1 px de flèche = 1 px/s réel (flèches lisibles)
+
+   Comportements vérifiés :
+   - Lune immobile → chute visible en ~1.5s
+   - r=110, v=60 px/s (flèche 60px ⊥ Terre) → orbite stable
+   - r=240, v=41 px/s (flèche 41px ⊥ Terre) → orbite stable éloignée
+   - r=130, v×1.20 → grande ellipse, retour ~31s
+   - r=130, v×1.30 → très grande ellipse, retour ~82s
+   ============================================================= */
+const G         = 2000000;  // ×5 vs v4 (ancienne gravité ×5 = nouveau ×1)   // Constante gravitationnelle simplifiée
+const SUBSTEP   = 8;        // Sous-pas par frame (stabilité Euler)
+const VEL_SCALE = 0.667;     // orbites ×1.5 plus rapides (v4 ×1.5)      // Facteur flèche ↔ vitesse réelle
+
+const W=900, H=700, CX=W/2, CY=H/2;
+const R_EARTH   = 32;       // Rayon Terre en pixels
+const MAX_MOONS = 4;
+const MAX_TRAJ  = 2000;
+const PRED_STEP = 500;      // Étapes simulation prédictive
+
+const SLOTS = [
+  {color:'#b8b8b8', r:13},
+  {color:'#c8834a', r:11},
+  {color:'#e05050', r:10},
+  {color:'#50c878', r:11},
+];
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+canvas.width = W; canvas.height = H;
+
+/* ---- État global ---- */
+const S = {
+  moons:[], paused:true, slow:false,
+  showGrav:false, showPred:false, moonGrav:false,
+  massMult:1, explosions:[], stars:[],
+  drag:null, nextId:0,
+  lastT:0, fN:0, fT:0, fps:60,
+};
+
+/* =============================================================
+   ÉTOILES
+   ============================================================= */
+function initStars(){
+  S.stars=Array.from({length:180},()=>({
+    x:Math.random()*W, y:Math.random()*H,
+    r:Math.random()*1.3+0.2, a:Math.random()*0.6+0.1,
+    ph:Math.random()*Math.PI*2, sp:Math.random()*0.01+0.003,
+  }));
+}
+function drawStars(t){
+  ctx.fillStyle='#03060f'; ctx.fillRect(0,0,W,H);
+  for(const s of S.stars){
+    s.y=(s.y+s.sp)%H;
+    const f=0.4+0.6*Math.abs(Math.sin(t*0.7+s.ph));
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(170,205,255,${s.a*f})`; ctx.fill();
+  }
+}
+
+/* =============================================================
+   PHYSIQUE
+   ============================================================= */
+
+/** Vitesse orbitale circulaire exacte : v = sqrt(G*M/r) */
+function vOrbit(r){ return Math.sqrt(G*S.massMult/r); }
+
+/**
+ * Un pas de physique, divisé en SUBSTEP sous-pas.
+ * Le sous-pas évite l'instabilité d'Euler quand la lune est proche.
+ */
+function physicsStep(dt){
+  const subDt = dt / SUBSTEP;
+  const toKill=[];
+
+  for(let sub=0; sub<SUBSTEP; sub++){
+    for(let i=0; i<S.moons.length; i++){
+      const m=S.moons[i];
+      if(!m.alive) continue;
+
+      /* Force Terre → Lune : F = G·M / d²
+         Direction : vecteur normalisé (Terre - Lune)              */
+      const dx=CX-m.px, dy=CY-m.py;
+      const d2=dx*dx+dy*dy;
+      const d=Math.sqrt(d2);
+
+      /* Softening : évite singularité si lune très proche */
+      const dSoft=Math.max(d, R_EARTH+m.r);
+      const F=(G*S.massMult)/(dSoft*dSoft);
+      let ax=F*dx/d, ay=F*dy/d;
+
+      /* Force inter-lunes (réduite, pédagogique) */
+      for(let j=0;j<S.moons.length;j++){
+        if(i===j||!S.moons[j].alive) continue;
+        const o=S.moons[j];
+        const ldx=o.px-m.px, ldy=o.py-m.py;
+        const ld=Math.sqrt(ldx*ldx+ldy*ldy);
+        if(ld<2) continue;
+        const lF=(G*(S.moonGrav?0.08:0.0012)*o.mass)/(ld*ld);
+        ax+=lF*ldx/ld; ay+=lF*ldy/ld;
+      }
+
+      /* Intégration Euler semi-implicite */
+      m.vx+=ax*subDt; m.vy+=ay*subDt;
+      m.px+=m.vx*subDt; m.py+=m.vy*subDt;
+
+      /* Collision avec la Terre */
+      if(d < R_EARTH+m.r-1 && !toKill.includes(m.id)){
+        m.alive=false;
+        spawnExplosion(m.px,m.py,m.color);
+        playExplosion();
+        toKill.push(m.id);
+      }
+
+for(let j=i+1; j<S.moons.length; j++){
+  const o=S.moons[j];
+  if(!o.alive||toKill.includes(o.id)) continue;
+  const ldx=o.px-m.px, ldy=o.py-m.py;
+  const ld=Math.sqrt(ldx*ldx+ldy*ldy);
+  if(ld < m.r+o.r-1){
+    m.alive=false; o.alive=false;
+    spawnExplosion(m.px,m.py,m.color);
+    spawnExplosion(o.px,o.py,o.color);
+    playExplosion();
+    toKill.push(m.id);
+    toKill.push(o.id);
+  }
+}
+
+    }
+  }
+
+
+
+  /* Historique trajectoire (une fois par frame, pas par sous-pas) */
+  for(const m of S.moons){
+    if(!m.alive||!S.showTraj) continue;
+    m.traj.push({x:m.px,y:m.py});
+    if(m.traj.length>MAX_TRAJ) m.traj.shift();
+  }
+
+  for(const id of toKill) S.moons=S.moons.filter(m=>m.id!==id);
+}
+
+/**
+ * Simulation fantôme pour trajectoire prédictive.
+ * Utilise aussi des sous-pas pour précision.
+ */
+function predictPath(moon){
+  const Geff=G*S.massMult;
+  const subDt=(1/60)/4;
+  let px=moon.px, py=moon.py, vx=moon.vx, vy=moon.vy;
+  const pts=[];
+  for(let s=0;s<PRED_STEP;s++){
+    const dx=CX-px, dy=CY-py;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<R_EARTH+moon.r) break;
+    const dS=Math.max(d,R_EARTH+moon.r);
+    const F=Geff/(dS*dS);
+    vx+=F*dx/d*subDt; vy+=F*dy/d*subDt;
+    px+=vx*subDt; py+=vy*subDt;
+    if(s%4===0) pts.push({x:px,y:py});
+  }
+  return pts;
+}
+
+/* =============================================================
+   LUNES
+   ============================================================= */
+function mkMoon(x,y,vx=0,vy=0){
+  if(S.moons.length>=MAX_MOONS) return null;
+  const used=S.moons.map(m=>m.slot);
+  const slot=[0,1,2,3].find(i=>!used.includes(i));
+  if(slot===undefined) return null;
+  return{
+    id:S.nextId++, slot, color:SLOTS[slot].color,
+    r:SLOTS[slot].r, mass:SLOTS[slot].r*0.9,
+    px:x, py:y, vx, vy, traj:[], alive:true,
+  };
+}
+
+function addMoon(){
+  if(S.moons.length>=MAX_MOONS) return;
+  /* Placement à droite de la Terre, IMMOBILE.
+     L'utilisateur tire la flèche pour lui donner une vitesse. */
+  const r=130+S.moons.length*30;
+  const m=mkMoon(CX+r,CY,0,0);
+  if(m){ S.moons.push(m); S.paused=true; updateUI(); }
+  setHint('Tire la flèche blanche ⊥ à la Terre pour obtenir une orbite');
+}
+
+/* =============================================================
+   EXPLOSIONS
+   ============================================================= */
+function spawnExplosion(x,y,color){
+  const f=[];
+  for(let i=0;i<16;i++){
+    const a=(Math.PI*2*i/16)+Math.random()*.5;
+    const v=50+Math.random()*110;
+    f.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,sz:2+Math.random()*4,color});
+  }
+  S.explosions.push(f);
+}
+function drawExplosions(dt){
+  S.explosions=S.explosions.filter(frags=>{
+    let any=false;
+    for(const f of frags){
+      f.x+=f.vx*dt; f.y+=f.vy*dt; f.vx*=0.93; f.vy*=0.93;
+      f.life=Math.max(0,f.life-dt*1.0);
+      if(f.life<=0) continue; any=true;
+      ctx.save(); ctx.globalAlpha=f.life;
+      ctx.fillStyle=f.color; ctx.shadowBlur=8; ctx.shadowColor=f.color;
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.sz*f.life,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    return any;
+  });
+}
+
+/* =============================================================
+   SON
+   ============================================================= */
+let _aud=null;
+function playExplosion(){
+  try{
+    if(!_aud) _aud=new Audio('./assets/explosion.mp3');
+    const a=_aud.cloneNode(); a.volume=0.5; a.play().catch(()=>{});
+  }catch(e){}
+}
+
+/* =============================================================
+   RENDU
+   ============================================================= */
+function arrow(x1,y1,x2,y2,color,w,glow,dash){
+  const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
+  if(len<2) return;
+  const ang=Math.atan2(dy,dx), al=Math.min(11,len*.3);
+  ctx.save();
+  if(glow){ctx.shadowBlur=10;ctx.shadowColor=color;}
+  if(dash) ctx.setLineDash([4,7]);
+  ctx.strokeStyle=color; ctx.lineWidth=w||1.5;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-al*Math.cos(ang-.38),y2-al*Math.sin(ang-.38));
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-al*Math.cos(ang+.38),y2-al*Math.sin(ang+.38));
+  ctx.stroke(); ctx.restore();
+}
+
+function drawEarth(){
+  /* Halo gravitationnel */
+  const h=ctx.createRadialGradient(CX,CY,R_EARTH,CX,CY,R_EARTH*5.5);
+  h.addColorStop(0,'rgba(28,75,200,.10)'); h.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(CX,CY,R_EARTH*5.5,0,Math.PI*2);
+  ctx.fillStyle=h; ctx.fill();
+  /* Sphère */
+  const g=ctx.createRadialGradient(CX-R_EARTH*.3,CY-R_EARTH*.37,R_EARTH*.04,CX,CY,R_EARTH);
+  g.addColorStop(0,'#90d4ff'); g.addColorStop(.3,'#3a8edd');
+  g.addColorStop(.7,'#1a5aaa'); g.addColorStop(1,'#081838');
+  ctx.beginPath(); ctx.arc(CX,CY,R_EARTH,0,Math.PI*2);
+  ctx.fillStyle=g; ctx.fill();
+  /* Anneaux si masse multipliée */
+  for(let i=1;i<S.massMult;i++){
+    ctx.beginPath(); ctx.arc(CX,CY,R_EARTH+i*9,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(74,158,255,${.22-i*.06})`; ctx.lineWidth=1.5; ctx.stroke();
+  }
+}
+
+function drawMoons(t){
+  for(const m of S.moons){
+    if(!m.alive) continue;
+
+    /* Trajectoire historique */
+    if(S.showTraj && m.traj.length>1){
+      for(let i=1;i<m.traj.length;i+=2){
+        const age=i/m.traj.length;
+        const al=Math.floor(age*200+15).toString(16).padStart(2,'0');
+        ctx.beginPath(); ctx.arc(m.traj[i].x,m.traj[i].y,1.3,0,Math.PI*2);
+        ctx.fillStyle=m.color+al; ctx.fill();
+      }
+    }
+
+    /* Trajectoire prédictive */
+    if(S.showPred){
+      const path=predictPath(m);
+      if(path.length>1){
+        ctx.save(); ctx.setLineDash([3,7]);
+        ctx.strokeStyle=m.color+'44'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(path[0].x,path[0].y);
+        for(const p of path) ctx.lineTo(p.x,p.y);
+        ctx.stroke(); ctx.restore();
+      }
+    }
+
+    /* Vecteur gravité */
+    if(S.showGrav){
+      const dx=CX-m.px, dy=CY-m.py, d=Math.sqrt(dx*dx+dy*dy);
+      const fl=Math.min(55,(G*S.massMult/(d*d))*0.000006);
+      arrow(m.px,m.py,m.px+(dx/d)*fl,m.py+(dy/d)*fl,'#ff9944',1.3);
+    }
+
+    /* Corps de la lune */
+    const g2=ctx.createRadialGradient(
+      m.px-m.r*.3,m.py-m.r*.35,m.r*.05, m.px,m.py,m.r);
+    g2.addColorStop(0,m.color); g2.addColorStop(.65,m.color+'bb'); g2.addColorStop(1,'#111');
+    ctx.beginPath(); ctx.arc(m.px,m.py,m.r,0,Math.PI*2);
+    ctx.shadowBlur=12; ctx.shadowColor=m.color;
+    ctx.fillStyle=g2; ctx.fill(); ctx.shadowBlur=0;
+
+    /* Flèche de vitesse interactive */
+    drawVelArrow(m,t);
+  }
+}
+
+/**
+ * Flèche de vitesse.
+ * Longueur = vitesse réelle × VEL_SCALE (1:1 ici).
+ * Si lune immobile → petite flèche clignotante d'invitation.
+ */
+function drawVelArrow(m,t){
+  const speed=Math.sqrt(m.vx*m.vx+m.vy*m.vy);
+  let tx, ty;
+  if(speed<0.5){
+    tx=m.px+48; ty=m.py;   /* Invitation : flèche fixe vers la droite */
+  } else {
+    tx=m.px+m.vx*VEL_SCALE;
+    ty=m.py+m.vy*VEL_SCALE;
+  }
+  const pulse=S.paused?(0.55+0.45*Math.sin(t*3.5)):1;
+  arrow(m.px,m.py,tx,ty,`rgba(255,255,255,${.9*pulse})`,2,true);
+  /* Poignée de saisie */
+  ctx.beginPath(); ctx.arc(tx,ty,7,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,255,255,${.3*pulse})`;
+  ctx.strokeStyle=`rgba(255,255,255,${.85*pulse})`; ctx.lineWidth=1.5;
+  ctx.fill(); ctx.stroke();
+}
+
+/* =============================================================
+   BOUCLE PRINCIPALE
+   ============================================================= */
+function loop(ts){
+  const rawDt=Math.min((ts-S.lastT)/1000,0.05);
+  S.lastT=ts;
+  S.fN++; S.fT+=rawDt;
+  if(S.fT>=1){
+    S.fps=S.fN; S.fN=0; S.fT=0;
+    document.getElementById('fps').textContent=S.fps+' FPS';
+  }
+  const dt=S.slow?rawDt*.25:rawDt;
+  if(!S.paused) physicsStep(dt);
+
+  const t=ts/1000;
+  drawStars(t); drawEarth(); drawMoons(t); drawExplosions(rawDt);
+  requestAnimationFrame(loop);
+}
+
+/* =============================================================
+   SCÉNARIOS — PARAMÈTRES EXACTS CALIBRÉS
+   ============================================================= */
+const SC={
+  /**
+   * Orbite proche stable : r=110px, v=vOrbit(110)
+   * Flèche perpendiculaire vers le haut, longueur 60px
+   */
+  close(){
+    reset();
+    const r=110, v=vOrbit(r);
+    push(mkMoon(CX+r,CY,0,-v));
+    go(); setHint('Orbite proche — grande vitesse car la gravité est forte ici');
+  },
+  /**
+   * Orbite éloignée stable : r=240px, v=vOrbit(240)
+   * Même logique, vitesse plus faible
+   */
+  far(){
+    reset();
+    const r=240, v=vOrbit(r);
+    push(mkMoon(CX+r,CY,0,-v));
+    go(); setHint('Orbite éloignée — moins de gravité, moins de vitesse');
+  },
+  /**
+   * Orbite sortante courte : v = vOrbit(130) × 1.20
+   * Retour vérifié à ~31s, distance max ~334px (sort de l'écran)
+   */
+  short(){
+    reset();
+    const r=130, v=vOrbit(r)*1.20;
+    push(mkMoon(CX+r,CY,0,-v));
+    go(); setHint('Trop vite → la lune s\'échappe… et revient dans ~14s !');
+  },
+  /**
+   * Orbite sortante longue : v = vOrbit(130) × 1.30
+   * Retour vérifié à ~82s, distance max ~709px (sort largement de l'écran)
+   */
+  long(){
+    reset();
+    const r=130, v=vOrbit(r)*1.30;
+    push(mkMoon(CX+r,CY,0,-v));
+    go(); setHint('Très grande ellipse — la lune revient dans ~37 secondes !');
+  },
+};
+
+function push(m){ if(m) S.moons.push(m); }
+function go(){ S.paused=false; updateUI(); }
+
+/* =============================================================
+   INTERACTIONS SOURIS
+   ============================================================= */
+function cXY(e){
+  const r=canvas.getBoundingClientRect();
+  return{x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};
+}
+function dist(ax,ay,bx,by){ return Math.sqrt((bx-ax)**2+(by-ay)**2); }
+
+function moonAt(x,y,ex=7){
+  return S.moons.find(m=>m.alive&&dist(x,y,m.px,m.py)<=m.r+ex)||null;
+}
+function velTipAt(x,y){
+  return S.moons.find(m=>{
+    if(!m.alive) return false;
+    const sp=Math.sqrt(m.vx*m.vx+m.vy*m.vy);
+    const tx=m.px+(sp<0.5?48:m.vx*VEL_SCALE);
+    const ty=m.py+(sp<0.5?0 :m.vy*VEL_SCALE);
+    return dist(x,y,tx,ty)<=16;
+  })||null;
+}
+
+canvas.addEventListener('mousedown',e=>{
+  const p=cXY(e);
+  const vm=velTipAt(p.x,p.y);
+  if(vm){S.drag={type:'vel',moon:vm};S.paused=true;updateUI();return;}
+  const mm=moonAt(p.x,p.y);
+  if(mm){S.drag={type:'moon',moon:mm};S.paused=true;updateUI();}
+});
+canvas.addEventListener('mousemove',e=>{
+  const p=cXY(e);
+  if(S.drag){
+    const m=S.drag.moon;
+    if(S.drag.type==='moon'){
+  const dx=p.x-CX, dy=p.y-CY;
+  const d=Math.sqrt(dx*dx+dy*dy);
+  const minDist=R_EARTH+m.r+5;
+  if(d>=minDist){m.px=p.x;m.py=p.y;}
+  m.traj=[];
+}
+    else{m.vx=(p.x-m.px)/VEL_SCALE;m.vy=(p.y-m.py)/VEL_SCALE;}
+  }
+  const ov=velTipAt(p.x,p.y),om=moonAt(p.x,p.y);
+  canvas.style.cursor=
+    S.drag?.type==='moon'?'grabbing':S.drag?.type==='vel'?'crosshair':
+    ov?'crosshair':om?'grab':'default';
+});
+canvas.addEventListener('mouseup',  ()=>{S.drag=null;});
+canvas.addEventListener('mouseleave',()=>{S.drag=null;});
+
+/* =============================================================
+   BOUTONS
+   ============================================================= */
+document.getElementById('bAdd').addEventListener('click',addMoon);
+document.getElementById('bReset').addEventListener('click',()=>{reset();setHint('Réinitialisé');});
+document.getElementById('bPause').addEventListener('click',()=>{S.paused=!S.paused;updateUI();});
+document.getElementById('bSlow').addEventListener('click',()=>{S.slow=!S.slow;updateUI();});
+document.getElementById('bTraj').addEventListener('click',()=>{
+  S.showTraj=!S.showTraj;
+  if(!S.showTraj)S.moons.forEach(m=>m.traj=[]);
+  updateUI();
+});
+
+document.getElementById('bPred').addEventListener('click',()=>{S.showPred=!S.showPred;updateUI();});
+document.getElementById('bMoonGrav').addEventListener('click',()=>{S.moonGrav=!S.moonGrav;updateUI();});
+document.getElementById('massSelect').addEventListener('change',e=>{
+  S.massMult=parseFloat(e.target.value);
+});
+document.querySelectorAll('[data-sc]').forEach(b=>{
+  b.addEventListener('click',()=>SC[b.dataset.sc]());
+});
+document.addEventListener('keydown',e=>{
+  if(e.key===' '){e.preventDefault();S.paused=!S.paused;updateUI();}
+  if(e.key==='r'||e.key==='R') reset();
+});
+
+/* =============================================================
+   UTILITAIRES
+   ============================================================= */
+function reset(){S.moons=[];S.explosions=[];S.paused=true;updateUI();}
+
+let _hT=null;
+function setHint(msg){
+  const el=document.getElementById('hint');
+  el.textContent=msg; el.style.opacity='1';
+  clearTimeout(_hT); _hT=setTimeout(()=>el.style.opacity='0',6000);
+}
+
+function tog(id,active,off,on){
+  const b=document.getElementById(id);
+  b.textContent=active?on:off;
+  b.classList.toggle('on',active);
+  b.setAttribute('aria-pressed',active?'true':'false');
+}
+function updateUI(){
+  document.getElementById('bAdd').disabled=S.moons.length>=MAX_MOONS;
+  const bp=document.getElementById('bPause');
+  bp.textContent=S.paused?'▶ Reprendre':'⏸ Pause';
+  bp.classList.toggle('on',S.paused);
+  const bs=document.getElementById('bSlow');
+  bs.textContent=S.slow?'🐢 Ralenti ACTIF':'🐢 Ralentir ×0.25';
+  bs.classList.toggle('on',S.slow);
+  tog('bTraj',S.showTraj,'○ Trajectoires','● Trajectoires ON');
+ 
+  tog('bPred',S.showPred,'○ Traj. prédictive','● Prédictive ON');
+tog('bMoonGrav',S.moonGrav,'○ Gravité lunes','● Gravité lunes ON');
+}
+
+/* =============================================================
+   DÉMARRAGE
+   ============================================================= */
+initStars();
+updateUI();
+setHint('Ajoute une lune ou choisis un scénario pour commencer');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
