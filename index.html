@@ -399,7 +399,7 @@ function drawMoons(t){
       const path=predictPath(m);
       if(path.length>1){
         ctx.save(); ctx.setLineDash([3,7]);
-        ctx.strokeStyle=m.color+'44'; ctx.lineWidth=1;
+        ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(path[0].x,path[0].y);
         for(const p of path) ctx.lineTo(p.x,p.y);
         ctx.stroke(); ctx.restore();
