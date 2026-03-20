@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -49,7 +49,7 @@
     border-bottom:1px solid var(--bord);padding-bottom:3px;margin-bottom:2px;}
   button{height:44px;background:var(--panel2);border:1px solid var(--bordhi);
     border-radius:5px;color:var(--txt);font-family:'Share Tech Mono',monospace;
-    font-size:.1.05rem;cursor:pointer;padding:0 8px;transition:all .12s;
+    font-size:1.05rem;cursor:pointer;padding:0 8px;transition:all .12s;
     text-align:left;width:100%;}
   button:hover{background:#132040;border-color:var(--acc);color:var(--acc2);}
   button:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
@@ -59,7 +59,7 @@
   button:disabled{opacity:.28;cursor:not-allowed;}
   select{height:44px;background:var(--panel2);border:1px solid var(--bordhi);
     border-radius:5px;color:var(--txt);font-family:'Share Tech Mono',monospace;
-    font-size:.1.05rem;padding:0 6px;cursor:pointer;width:100%;}
+    font-size:1.05rem;padding:0 6px;cursor:pointer;width:100%;}
 </style>
 </head>
 <body>
@@ -89,6 +89,7 @@
     <div class="grp">
       <div class="lbl">👁 Affichage</div>
       <button id="bTraj"  aria-pressed="false">○ Trajectoires</button>
+      <button id="bInfo"  aria-pressed="false">○ Distance / Vitesse</button>
      
       <button id="bPred"  aria-pressed="false">○ Traj. prédictive</button>
                <button id="bMoonGrav" aria-pressed="false">○ Gravité lunes</button>
@@ -99,6 +100,7 @@
       <button data-sc="far">🟣 Orbite éloignée stable</button>
       <button data-sc="short">🟡 Orbite elliptique</button>
       <button data-sc="long">🔴 Orbite sortante longue</button>
+      <button data-sc="lunar">🌕 Orbite lunaire (modélisée)</button>
     </div>
   </div>
 </div>
@@ -144,7 +146,7 @@ canvas.width = W; canvas.height = H;
 /* ---- État global ---- */
 const S = {
   moons:[], paused:true, slow:false,
-  showGrav:false, showPred:false, moonGrav:false,
+  showTraj:true, showGrav:false, showPred:false, moonGrav:false, showInfo:false,
   massMult:1, explosions:[], stars:[],
   drag:null, nextId:0,
   lastT:0, fN:0, fT:0, fps:60,
@@ -423,6 +425,21 @@ function drawMoons(t){
 
     /* Flèche de vitesse interactive */
     drawVelArrow(m,t);
+
+    /* Affichage distance / vitesse */
+    if(S.showInfo){
+      const dx=CX-m.px, dy=CY-m.py;
+      const dist=Math.sqrt(dx*dx+dy*dy)-R_EARTH; // distance surface Terre
+      const speed=Math.sqrt(m.vx*m.vx+m.vy*m.vy);
+      const label=`d:${Math.round(dist)}  v:${Math.round(speed)}`;
+      ctx.save();
+      ctx.font='bold 11px Share Tech Mono, monospace';
+      ctx.fillStyle='rgba(0,0,0,0.55)';
+      ctx.fillRect(m.px+m.r+3, m.py-10, ctx.measureText(label).width+8, 16);
+      ctx.fillStyle=m.color;
+      ctx.fillText(label, m.px+m.r+7, m.py+3);
+      ctx.restore();
+    }
   }
 }
 
@@ -500,7 +517,7 @@ const SC={
     reset();
     const r=130, v=vOrbit(r)*1.20;
     push(mkMoon(CX+r,CY,0,-v));
-    go(); setHint('Trop vite → la lune s\'échappe… et revient dans ~14s !');
+    go(); setHint('Trop vite → la trajectoire est une ellipse !');
   },
   /**
    * Orbite sortante longue : v = vOrbit(130) × 1.30
@@ -511,6 +528,12 @@ const SC={
     const r=130, v=vOrbit(r)*1.30;
     push(mkMoon(CX+r,CY,0,-v));
     go(); setHint('Très grande ellipse — la lune revient dans ~37 secondes !');
+  },
+lunar(){
+    reset();
+    const r=380, v=72;
+    push(mkMoon(CX+r,CY,0,-v));
+    go(); setHint('Orbite lunaire modélisée — proportions inspirées de la vraie Lune');
   },
 };
 
@@ -581,6 +604,7 @@ document.getElementById('bTraj').addEventListener('click',()=>{
 });
 
 document.getElementById('bPred').addEventListener('click',()=>{S.showPred=!S.showPred;updateUI();});
+document.getElementById('bInfo').addEventListener('click',()=>{S.showInfo=!S.showInfo;updateUI();});
 document.getElementById('bMoonGrav').addEventListener('click',()=>{S.moonGrav=!S.moonGrav;updateUI();});
 document.getElementById('massSelect').addEventListener('change',e=>{
   S.massMult=parseFloat(e.target.value);
@@ -620,6 +644,7 @@ function updateUI(){
   bs.textContent=S.slow?'🐢 Ralenti ACTIF':'🐢 Ralentir ×0.25';
   bs.classList.toggle('on',S.slow);
   tog('bTraj',S.showTraj,'○ Trajectoires','● Trajectoires ON');
+  tog('bInfo',S.showInfo,'○ Distance / Vitesse','● Distance / Vitesse ON');
  
   tog('bPred',S.showPred,'○ Traj. prédictive','● Prédictive ON');
 tog('bMoonGrav',S.moonGrav,'○ Gravité lunes','● Gravité lunes ON');
